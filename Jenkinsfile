@@ -1,61 +1,67 @@
 pipeline {
   agent any
+
   environment {
-    SESSION_SECRET = credentials('session-secret-id')
-    MONGODB_URI   = "mongodb://mongo-test:27017/express-typescript-starter"
-    IMAGE_BUILDER = "project:builder"
-    IMAGE_RUNTIME = "project:runtime"
-    REGISTRY      = "registry.example.com/org/project"
+    // tagi do obrazów
+    NODE_IMAGE   = 'node:18-alpine'
+    APP_IMAGE    = "ts-node-starter:ci-${env.BUILD_NUMBER}"
+    MONGO_IMAGE  = 'mongo:4.4'
+    NETWORK      = 'ci-net'
   }
+
   stages {
-    stage('Collect') {
-      steps { checkout scm }
+    stage('Prepare network') {
+      steps {
+        // utworzenie sieci, jeśli już istnieje to nic się nie stanie
+        sh "docker network create ${NETWORK} || true"
+      }
     }
-    stage('Build') {
-      agent { docker { image 'node:18-alpine'; args '-v /var/run/docker.sock:/var/run/docker.sock' } }
-      steps { sh 'docker build -f Dockerfile.builder -t $IMAGE_BUILDER .' }
+
+    stage('Build app image') {
+      steps {
+        // używamy Dockerfile.builder jeśli masz oddzielny, albo Dockerfile
+        sh "docker build --pull -t ${APP_IMAGE} ."
+      }
     }
+
+    stage('Start Mongo') {
+      steps {
+        // uruchamiamy mongo w tle
+        sh "docker run -d --name ci-mongo --network ${NETWORK} ${MONGO_IMAGE}"
+      }
+    }
+
     stage('Test') {
       steps {
-        sh 'docker network create ci-net || true'
-        sh 'docker run -d --name mongo-test --network ci-net mongo:4.4'
+        // uruchamiamy kontener z naszą aplikacją i odpalamy testy
         sh """
           docker run --rm \
-            --network ci-net \
-            -e MONGODB_URI=$MONGODB_URI \
-            -e SESSION_SECRET=$SESSION_SECRET \
-            $IMAGE_BUILDER \
+            --network ${NETWORK} \
+            -e MONGODB_URI_LOCAL="mongodb://ci-mongo:27017/express-typescript-starter" \
+            ${APP_IMAGE} \
             npm test
         """
       }
     }
-    stage('Report') {
+
+    stage('Cleanup Mongo') {
       steps {
-        junit 'coverage/junit/*.xml'
-        publishHTML target: [
-          reportName: 'Coverage',
-          reportDir:  'coverage/lcov-report',
-          reportFiles: 'index.html'
-        ]
+        sh "docker rm -f ci-mongo || true"
       }
-      post { always {
-        sh 'docker rm -f mongo-test || true'
-        sh 'docker network rm ci-net   || true'
-      }}
     }
-    stage('Publish') {
-      when { branch 'main' }
-      agent { docker { image 'docker:20.10.12-dind'; args '--privileged -v /var/run/docker.sock:/var/run/docker.sock' } }
+
+    stage('Publish artifacts') {
       steps {
-        sh "docker build -f Dockerfile.runtime -t $REGISTRY:latest ."
-        withDockerRegistry([ credentialsId: 'docker-registry-cred', url: 'https://registry.example.com' ]) {
-          sh "docker push $REGISTRY:latest"
-        }
+        archiveArtifacts artifacts: 'dist/**/*', fingerprint: true
       }
     }
   }
+
   post {
-    success { echo '✅ Pipeline zakończony sukcesem' }
-    failure { echo '❌ Pipeline nie powiódł się' }
+    always {
+      // dla pewności posprzątaj
+      sh "docker rm -f ci-mongo || true"
+      sh "docker network rm ${NETWORK} || true"
+    }
   }
 }
