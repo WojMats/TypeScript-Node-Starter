@@ -1,12 +1,10 @@
-# Bazowy obraz Node.js + JDK17
-FROM node:18-alpine
+FROM jenkins/jenkins:lts-jdk17
 
-# Zainstaluj Docker CLI
 USER root
-RUN apk add --no-cache docker-cli
 
-# Użytkownik Jenkins (albo zostaw root, jeśli potrzebujesz dostępu do dockera.sock)
-RUN addgroup -S docker && adduser jenkins docker
+# Zainstaluj Docker CLI i dodaj użytkownika jenkins do grupy docker
+RUN apt-get update && \
+    apt-get install -y docker.io && \
+    usermod -aG docker jenkins
 
-# Przejdź na użytkownika (opcjonalnie)
-USER node
+USER jenkins
