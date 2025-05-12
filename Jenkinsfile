@@ -2,9 +2,9 @@ pipeline {
   agent any
 
   environment {
-    APP_IMAGE   = "ts-node-starter:ci-${env.BUILD_NUMBER}"
-    MONGO_IMAGE = 'mongo:4.4'
-    NETWORK     = 'ci-net'
+    APP_IMAGE = "ts-node-starter:ci-${env.BUILD_NUMBER}"
+    MONGO_IMAGE = "mongo:4.4"
+    NETWORK = "ci-net"
   }
 
   stages {
@@ -62,9 +62,10 @@ pipeline {
         echo '📦 Tworzenie .tar obrazu i archiwum .zip z dist/'
         sh """
           docker save ${APP_IMAGE} -o ts-node-starter.tar
+          apk add zip || true
           zip -r dist.zip dist/
         """
-        archiveArtifacts artifacts: '*.tar, dist.zip', fingerprint: true
+        archiveArtifacts artifacts: 'ts-node-starter.tar, dist.zip', fingerprint: true
       }
     }
   }
@@ -77,4 +78,3 @@ pipeline {
     }
   }
 }
-
