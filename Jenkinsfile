@@ -2,6 +2,7 @@ pipeline {
   agent any
 
   environment {
+    NODE_IMAGE   = 'node:18-alpine'
     APP_IMAGE    = "ts-node-starter:ci-${env.BUILD_NUMBER}"
     MONGO_IMAGE  = 'mongo:4.4'
     NETWORK      = 'ci-net'
@@ -26,7 +27,7 @@ pipeline {
       steps {
         echo "🧬 Uruchamianie kontenera MongoDB"
         sh "docker run -d --name ci-mongo --network ${NETWORK} ${MONGO_IMAGE}"
-        sh "sleep 5"  // Dajemy bazie chwilę na start
+        sh "sleep 5"
       }
     }
 
@@ -43,17 +44,23 @@ pipeline {
       }
     }
 
+    stage('Publish artifacts') {
+      steps {
+        echo "📦 Kopiowanie artefaktów z kontenera"
+        sh """
+          docker create --name temp-app ${APP_IMAGE}
+          docker cp temp-app:/app/dist ./dist
+          docker rm temp-app
+        """
+        echo "📁 Archiwizacja dist/"
+        archiveArtifacts artifacts: 'dist/**/*', fingerprint: true
+      }
+    }
+
     stage('Cleanup Mongo') {
       steps {
         echo "🧹 Sprzątanie MongoDB"
         sh "docker rm -f ci-mongo || true"
-      }
-    }
-
-    stage('Publish artifacts') {
-      steps {
-        echo "📦 Archiwizacja artefaktów"
-        archiveArtifacts artifacts: 'dist/**/*', fingerprint: true
       }
     }
   }
