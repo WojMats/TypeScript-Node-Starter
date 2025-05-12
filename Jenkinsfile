@@ -3,11 +3,12 @@ pipeline {
 
   environment {
     APP_IMAGE = "ts-node-starter:ci-${env.BUILD_NUMBER}"
-    MONGO_IMAGE = "mongo:4.4"
-    NETWORK = "ci-net"
+    MONGO_IMAGE = 'mongo:4.4'
+    NETWORK = 'ci-net'
   }
 
   stages {
+
     stage('Prepare network') {
       steps {
         echo '🔧 Tworzenie sieci Docker (jeśli nie istnieje)'
@@ -34,11 +35,9 @@ pipeline {
       steps {
         echo '🧪 Uruchamianie testów'
         sh """
-          docker run --rm \
-            --network ${NETWORK} \
+          docker run --rm --network ${NETWORK} \
             -e MONGODB_URI_LOCAL="mongodb://ci-mongo:27017/express-typescript-starter" \
-            ${APP_IMAGE} \
-            npm test
+            ${APP_IMAGE} npm test
         """
       }
     }
@@ -52,7 +51,12 @@ pipeline {
 
     stage('Publish artifacts') {
       steps {
-        echo '📦 Archiwizacja dist/'
+        echo '📦 Wyciąganie dist/ z obrazu i archiwizacja'
+        sh """
+          docker create --name extract-container ${APP_IMAGE}
+          docker cp extract-container:/app/dist ./dist
+          docker rm extract-container
+        """
         archiveArtifacts artifacts: 'dist/**/*', fingerprint: true
       }
     }
@@ -62,10 +66,10 @@ pipeline {
         echo '📦 Tworzenie .tar obrazu i archiwum .zip z dist/'
         sh """
           docker save ${APP_IMAGE} -o ts-node-starter.tar
-          apk add zip || true
           zip -r dist.zip dist/
         """
-        archiveArtifacts artifacts: 'ts-node-starter.tar, dist.zip', fingerprint: true
+        archiveArtifacts artifacts: 'ts-node-starter.tar', fingerprint: true
+        archiveArtifacts artifacts: 'dist.zip', fingerprint: true
       }
     }
   }
